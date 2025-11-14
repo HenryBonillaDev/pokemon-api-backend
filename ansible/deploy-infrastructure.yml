@@ -1,0 +1,83 @@
+---
+- name: Deploy Pokemon API Infrastructure
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Create CloudWatch Log Group
+      community.aws.cloudwatchlogs_log_group:
+        log_group_name: "/ecs/{{ ecs_task_family }}"
+        region: "{{ aws_region }}"
+        state: present
+
+    - name: Create ECS Task Execution Role
+      community.aws.iam_role:
+        name: ecsTaskExecutionRole
+        assume_role_policy_document: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "ecs-tasks.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+        managed_policies:
+          - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        state: present
+        region: "{{ aws_region }}"
+
+    - name: Register ECS Task Definition
+      community.aws.ecs_taskdefinition:
+        family: "{{ ecs_task_family }}"
+        region: "{{ aws_region }}"
+        network_mode: awsvpc
+        launch_type: FARGATE
+        cpu: "{{ fargate_cpu }}"
+        memory: "{{ fargate_memory }}"
+        execution_role_arn: "arn:aws:iam::{{ account_id }}:role/ecsTaskExecutionRole"
+        containers:
+          - name: "{{ container_name }}"
+            image: "{{ account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com/{{ ecr_repository_name }}:latest"
+            essential: true
+            portMappings:
+              - containerPort: "{{ container_port }}"
+                protocol: tcp
+            environment:
+              - name: ENVIRONMENT
+                value: production
+              - name: POKEAPI_BASE_URL
+                value: https://pokeapi.co/api/v2
+              - name: DATABASE_URL
+                value: "{{ db_url }}"
+              - name: SECRET_KEY
+                value: "{{ jwt_secret_key }}"
+            logConfiguration:
+              logDriver: awslogs
+              options:
+                awslogs-group: "/ecs/{{ ecs_task_family }}"
+                awslogs-region: "{{ aws_region }}"
+                awslogs-stream-prefix: ecs
+        state: present
+
+    - name: Create or Update ECS Service
+      community.aws.ecs_service:
+        name: "{{ ecs_service_name }}"
+        cluster: "{{ ecs_cluster_name }}"
+        task_definition: "{{ ecs_task_family }}"
+        force_new_deployment: true
+        desired_count: 1
+        launch_type: FARGATE
+        region: "{{ aws_region }}"
+        network_configuration:
+          subnets: "{{ subnet_ids }}"
+          security_groups:
+            - "{{ security_group_id }}"
+          assign_public_ip: true
+        state: present
