@@ -205,3 +205,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local Ansible variable files
+ansible/vars.yml
+iam-policy*.json
+task-definition.json
