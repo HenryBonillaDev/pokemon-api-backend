@@ -75,6 +75,11 @@
         desired_count: 1
         launch_type: FARGATE
         region: "{{ aws_region }}"
+        load_balancers:
+          - targetGroupArn: "{{ target_group_arn }}"
+            containerName: "{{ container_name }}"
+            containerPort: "{{ container_port }}"
+        health_check_grace_period_seconds: 60
         network_configuration:
           subnets: "{{ subnet_ids }}"
           security_groups:
